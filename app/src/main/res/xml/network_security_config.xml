@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config xmlns:android="http://schemas.android.com/apk/res/android">
+<!--    <domain-config android:cleartextTrafficPermitted="true">-->
+<!--        <domain includeSubdomains="true">10.183.171.42</domain>-->
+<!--    </domain-config>-->
+    <base-config cleartextTrafficPermitted="true">
+    </base-config>
+</network-security-config>
+
