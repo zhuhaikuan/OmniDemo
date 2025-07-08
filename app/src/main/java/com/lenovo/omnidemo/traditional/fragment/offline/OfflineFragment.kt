@@ -44,9 +44,9 @@ class OfflineFragment : BaseFragment<FragmentOfflineBinding>() {
     private var isVideo = false
     private var isImage = false
 
-    val audioFileList = ArrayList<File>()
-    var audioNum = 0
-    var audioIndex = 0
+    private val audioFileList = ArrayList<File>()
+    private var audioNum = 0
+    private var audioIndex = 0
 
     companion object {
         const val TAG = "OfflineFragment"
@@ -135,6 +135,7 @@ class OfflineFragment : BaseFragment<FragmentOfflineBinding>() {
                     call.enqueue(object : retrofit2.Callback<ResponseBody> {
                         override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
                             Log.e(TAG, "############### onResponse has been called!!!")
+                            Log.e(TAG, "success = ${response.isSuccessful}")
                             if (response.isSuccessful && response.body() != null) {
                                 lifecycleScope.launch(Dispatchers.IO) {
                                     val responseBody = response.body()

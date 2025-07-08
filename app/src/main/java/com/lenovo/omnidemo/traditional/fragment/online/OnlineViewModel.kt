@@ -2,10 +2,13 @@ package com.lenovo.omnidemo.traditional.fragment.online
 
 import android.content.Context
 import android.net.Uri
+import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.iceteck.silicompressorr.SiliCompressor
 import com.lenovo.omnidemo.traditional.net.ApiService
 import com.lenovo.omnidemo.traditional.net.RetrofitClient
 import com.lenovo.omnidemo.traditional.net.UploadResponse
@@ -30,6 +33,7 @@ import java.io.InputStreamReader
 
 class OnlineViewModel : ViewModel() {
     private val apiService = RetrofitClient.createService(ApiService::class.java)
+    var outputPath: MutableLiveData<String> = MutableLiveData()
 
     suspend fun generate(text: String, image: String, audio: String, video: String): Response<UploadResponse> =
         withContext(Dispatchers.IO) {
@@ -148,43 +152,51 @@ class OnlineViewModel : ViewModel() {
         }
     }
 
-    fun compressVideo(inputPath: String, outputPath: String, bitrate: String = "1024k") {
-        Log.e("VideoViewModel","inputPath = $inputPath, outputPath = $outputPath, bitrate = $bitrate")
-        val cmd = arrayOf(
-            "ffmpeg",
-            "-i", inputPath,
-            "-b:v", bitrate,
-            "-vcodec", "h264",
-            "-acodec", "aac",
-            "-strict", "-2",
-            outputPath
-        )
-
-        viewModelScope.launch {
-            try {
-                val processBuilder = ProcessBuilder(*cmd)
-                processBuilder.redirectErrorStream(true)
-                val process = processBuilder.start()
-                val reader = BufferedReader(InputStreamReader(process.inputStream))
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    Log.e("VideoViewModel","line: $line")
-                }
-                process.waitFor()
-
-
-//                val process = Runtime.getRuntime().exec(cmd)
-//                val exitCode = process.waitFor()
-//                Log.e("VideoViewModel","exitCode: $exitCode")
-//                if (exitCode == 0) {
-//                    Log.e("VideoViewModel","压缩成功")
-//                } else {
-//                    Log.e("VideoViewModel","压缩失败")
-//                }
-            } catch (e: Exception) {
-                Log.e("VideoViewModel", "压缩视频出错：${e.message}")
-                e.printStackTrace()
-            }
+    fun compressVideoSili(context: Context, videoUri: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = SiliCompressor.with(context).compressVideo(videoUri,
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES).path + "/Compress-Video/")
+            outputPath.postValue(result)
         }
     }
+
+//    fun compressVideo(inputPath: String, outputPath: String, bitrate: String = "1024k") {
+//        Log.e("VideoViewModel","inputPath = $inputPath, outputPath = $outputPath, bitrate = $bitrate")
+//        val cmd = arrayOf(
+//            "ffmpeg",
+//            "-i", inputPath,
+//            "-b:v", bitrate,
+//            "-vcodec", "h264",
+//            "-acodec", "aac",
+//            "-strict", "-2",
+//            outputPath
+//        )
+//
+//        viewModelScope.launch {
+//            try {
+//                val processBuilder = ProcessBuilder(*cmd)
+//                processBuilder.redirectErrorStream(true)
+//                val process = processBuilder.start()
+//                val reader = BufferedReader(InputStreamReader(process.inputStream))
+//                var line: String?
+//                while (reader.readLine().also { line = it } != null) {
+//                    Log.e("VideoViewModel","line: $line")
+//                }
+//                process.waitFor()
+//
+//
+////                val process = Runtime.getRuntime().exec(cmd)
+////                val exitCode = process.waitFor()
+////                Log.e("VideoViewModel","exitCode: $exitCode")
+////                if (exitCode == 0) {
+////                    Log.e("VideoViewModel","压缩成功")
+////                } else {
+////                    Log.e("VideoViewModel","压缩失败")
+////                }
+//            } catch (e: Exception) {
+//                Log.e("VideoViewModel", "压缩视频出错：${e.message}")
+//                e.printStackTrace()
+//            }
+//        }
+//    }
 }
