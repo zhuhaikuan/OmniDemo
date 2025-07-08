@@ -162,10 +162,12 @@ class OfflineFragment : BaseFragment<FragmentOfflineBinding>() {
                                             audioNum++
                                         }
                                     }
+                                    withContext (Dispatchers.Main){
+                                        binding.play.isEnabled = true
+                                        playAudio()
+                                    }
                                 }
                             }
-                            binding.play.isEnabled = true
-                            playAudio()
                         }
 
                         override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
