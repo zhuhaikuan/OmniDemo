@@ -18,6 +18,8 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody
+import retrofit2.Call
 import retrofit2.Response
 import java.io.BufferedReader
 import java.io.File
@@ -63,6 +65,41 @@ class OnlineViewModel : ViewModel() {
             }
 
             apiService.generateWithUpload(textRequestBody, imagePart, audioPart, videoPart)
+        }
+
+    fun processFormStream(text: String, image: String, audio: String, video: String): Call<ResponseBody> {
+            var textRequestBody: RequestBody? = null
+            var imagePart: MultipartBody.Part? = null
+            var audioPart: MultipartBody.Part? = null
+            var videoPart: MultipartBody.Part? = null
+            try {
+                if (text.isNotEmpty()) {
+                    textRequestBody = text.toRequestBody("text/plain".toMediaType())
+                }
+                if (image.isNotEmpty()) {
+                    val imageFile = File(image)
+                    val imageRequestBody = imageFile.asRequestBody("multipart/form-data".toMediaTypeOrNull())
+                    imagePart = MultipartBody.Part.createFormData("image", imageFile.name, imageRequestBody)
+                }
+                if (audio.isNotEmpty()) {
+                    val audioFile = File(audio)
+                    val audioRequestBody = audioFile.asRequestBody("multipart/form-data".toMediaTypeOrNull())
+                    audioPart = MultipartBody.Part.createFormData("audio", audioFile.name, audioRequestBody)
+                }
+                if (video.isNotEmpty()) {
+                    val videoFile = File(video)
+                    val videoRequestBody = videoFile.asRequestBody("multipart/form-data".toMediaTypeOrNull())
+                    videoPart = MultipartBody.Part.createFormData("video", videoFile.name, videoRequestBody)
+                }
+            } catch (e: IOException) {
+                Log.e("VideoViewModel", "occur an IOException")
+            } catch (e: FileNotFoundException) {
+                Log.e("VideoViewModel", "occur a FileNotFoundException")
+            } catch (e: NullPointerException) {
+                Log.e("VideoViewModel", "occur a NullPointerException")
+            }
+
+            return apiService.processFormStream(textRequestBody, imagePart, audioPart, videoPart)
         }
 
     suspend fun download(context: Context): File? = withContext(Dispatchers.IO) {

@@ -13,7 +13,8 @@ import java.util.concurrent.TimeUnit
  */
 object RetrofitClient {
 //    private const val BASE_URL = "http://10.183.171.42:33445"
-private const val BASE_URL = "http://10.110.129.129:10000/"
+//    private const val BASE_URL = "http://10.110.129.129:10000/"
+    private const val BASE_URL = "http://10.110.158.191:30380/"
 
     private val loggingInterceptor = HttpLoggingInterceptor { message -> println("OkHttp: $message") }.apply {
         level = HttpLoggingInterceptor.Level.NONE

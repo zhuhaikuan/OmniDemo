@@ -4,30 +4,37 @@ import android.app.Activity
 import android.content.Intent
 import android.media.MediaPlayer
 import android.net.Uri
-import android.os.Build
 import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.util.Base64
 import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.RequiresApi
+import androidx.core.net.toUri
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import com.lenovo.omnidemo.R
 import com.lenovo.omnidemo.databinding.FragmentOfflineBinding
 import com.lenovo.omnidemo.traditional.activity.base.BaseFragment
-import com.lenovo.omnidemo.traditional.fragment.online.OnlineFragment
 import com.lenovo.omnidemo.traditional.fragment.online.OnlineViewModel
 import com.lenovo.omnidemo.traditional.tools.ParseUriToRealPathUtil
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.ResponseBody
+import org.json.JSONObject
+import retrofit2.Call
+import retrofit2.Response
+import java.io.BufferedReader
 import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStreamReader
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 
 class OfflineFragment : BaseFragment<FragmentOfflineBinding>() {
-    private lateinit var mediaPlayer: MediaPlayer
-    private var audioFilePath = ""
+    private val mediaPlayer: MediaPlayer = MediaPlayer()
 
     private var lastAudioPath = ""
     private var lastVideoPath = ""
@@ -36,7 +43,10 @@ class OfflineFragment : BaseFragment<FragmentOfflineBinding>() {
     private var isAudio = false
     private var isVideo = false
     private var isImage = false
-    private var isMediaPlayerInitialized = false
+
+    val audioFileList = ArrayList<File>()
+    var audioNum = 0
+    var audioIndex = 0
 
     companion object {
         const val TAG = "OfflineFragment"
@@ -49,24 +59,26 @@ class OfflineFragment : BaseFragment<FragmentOfflineBinding>() {
         return FragmentOfflineBinding.inflate(layoutInflater)
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     override fun initData() {
         binding.play.isEnabled = false
         binding.play.setOnClickListener {
-            if(!isMediaPlayerInitialized) {
-                audioFilePath = File(requireContext().getExternalFilesDir(null), "output.wav").path
-                initMediaPlayer()
-                isMediaPlayerInitialized = true
-            }
-
-            if (mediaPlayer.isPlaying) {
-                mediaPlayer.pause()
-                binding.play.setImageResource(R.drawable.baseline_play_circle_24)
-            } else {
-                mediaPlayer.start()
-                binding.play.setImageResource(R.drawable.baseline_pause_circle_24)
-            }
+            playAudio()
         }
+
+        mediaPlayer.setOnCompletionListener(object : MediaPlayer.OnCompletionListener {
+            override fun onCompletion(mp: MediaPlayer?) {
+                audioIndex++
+                if (audioIndex >= audioFileList.size) {
+                    mediaPlayer.reset()
+                    binding.play.setImageResource(R.drawable.baseline_play_circle_24)
+                } else {
+                    mediaPlayer.reset()
+                    mediaPlayer.setDataSource(audioFileList[audioIndex].path)
+                    mediaPlayer.prepare()
+                    mediaPlayer.start()
+                }
+            }
+        })
 
         binding.uploadAudio.setOnClickListener {
             isAudio = true
@@ -110,27 +122,56 @@ class OfflineFragment : BaseFragment<FragmentOfflineBinding>() {
         binding.submit.setOnClickListener {
             binding.progressBar.visibility = View.VISIBLE
             binding.submit.isEnabled = false
+            audioNum = 0
+            audioIndex = 0
+            audioFileList.clear()
 
             val text = binding.question.text.toString()
+            var sb = StringBuilder()
             lifecycleScope.launch {
                 try {
                     Log.e(TAG, "text: $text, lastImagePath:  $lastImagePath, lastAudioPath: $lastAudioPath, lastVideoPath: $lastVideoPath")
-                    val result = viewModel.generate(text, lastImagePath, lastAudioPath, lastVideoPath)
-                    if (result.isSuccessful) {
-                        val file = viewModel.download(requireActivity())
-                        binding.result.text = result.body()?.text.toString()
-                        binding.progressBar.visibility = View.GONE
-                        if (file != null) {
+                    val call = viewModel.processFormStream(text, lastImagePath, lastAudioPath, lastVideoPath)
+                    call.enqueue(object : retrofit2.Callback<ResponseBody> {
+                        override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+                            Log.e(TAG, "############### onResponse has been called!!!")
+                            if (response.isSuccessful && response.body() != null) {
+                                lifecycleScope.launch(Dispatchers.IO) {
+                                    val responseBody = response.body()
+                                    val inputStream = responseBody?.byteStream()
+                                    val reader = BufferedReader(InputStreamReader(inputStream))
+                                    var line: String?
+                                    while (reader.readLine().also { line = it } != null) {
+                                        val json = JSONObject(line!!)
+                                        Log.e("VideoViewModel", "line: $line, json: $json")
+                                        if (json.getString("type") == "text") {
+                                            sb = sb.append(json.getString("content"))
+                                            Log.e("VideoViewModel", "text: $sb")
+                                            withContext (Dispatchers.Main){
+                                                binding.result.text = sb.toString()
+                                                binding.result.invalidate()
+                                            }
+                                        }
+                                        if (json.getString("type") == "audio") {
+                                            val audioBase64 = json.getString("content")
+                                            val audioFile = Base64.decode(audioBase64, Base64.DEFAULT)
+                                            val file = File(requireContext().getExternalFilesDir(null), "$audioNum.wav")
+                                            val fileOutputStream = FileOutputStream(file)
+                                            fileOutputStream.write(audioFile)
+                                            audioFileList.add(file)
+                                            audioNum++
+                                        }
+                                    }
+                                }
+                            }
                             binding.play.isEnabled = true
-                            Toast.makeText(requireActivity(), "Generate succeed", Toast.LENGTH_LONG).show()
-                            Log.e(TAG, "Generate succeed")
-                        } else {
-                            Toast.makeText(requireActivity(), "Generate succeed,  but download failed!!!", Toast.LENGTH_LONG).show()
+                            playAudio()
                         }
-                    } else {
-                        Toast.makeText(requireActivity(), "Generate failed", Toast.LENGTH_LONG).show()
-                        Log.e(OnlineFragment.TAG, "Generate failed")
-                    }
+
+                        override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
+                            Log.e("VideoViewModel", "请求失败：${t.message}")
+                        }
+                    })
                 } catch (e: SocketTimeoutException) {
                     Toast.makeText(requireActivity(), "SocketTimeoutException, Please check your network", Toast.LENGTH_LONG).show()
                     Log.e(TAG, "SocketTimeoutException, Please check your network")
@@ -157,16 +198,25 @@ class OfflineFragment : BaseFragment<FragmentOfflineBinding>() {
         }
     }
 
-    private fun initMediaPlayer() {
-        mediaPlayer = MediaPlayer().apply {
-            setDataSource(audioFilePath)
-            prepare() // 或者使用 prepareAsync()
-            isLooping = false
+    private fun playAudio() {
+        initMediaPlayer()
+        if (mediaPlayer.isPlaying) {
+            mediaPlayer.pause()
+            binding.play.setImageResource(R.drawable.baseline_play_circle_24)
+        } else {
+            mediaPlayer.start()
+            binding.play.setImageResource(R.drawable.baseline_pause_circle_24)
         }
     }
 
-    private var selectedUri: Uri = Uri.parse("")
-    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun initMediaPlayer() {
+        audioIndex = 0
+        mediaPlayer.setDataSource(audioFileList[audioIndex].path)
+        mediaPlayer.prepare()
+        mediaPlayer.isLooping = false
+    }
+
+    private var selectedUri: Uri = "".toUri()
     private val activityResultContract = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -174,26 +224,23 @@ class OfflineFragment : BaseFragment<FragmentOfflineBinding>() {
             if (result.data?.clipData != null) {
                 val count = result.data?.clipData?.itemCount?:0
                 for (i in 0 until count) {
-                    selectedUri = result.data?.clipData?.getItemAt(i)?.uri ?: Uri.parse("")
+                    selectedUri = result.data?.clipData?.getItemAt(i)?.uri ?: "".toUri()
                 }
             } else {
-                selectedUri = result.data?.data?: Uri.parse("")
+                selectedUri = result.data?.data?: "".toUri()
             }
 
             when  {
                 isAudio -> {
                     lastAudioPath = ParseUriToRealPathUtil.getRealPathFromUri(requireContext(), selectedUri).toString()
-//                    Toast.makeText(requireActivity(), "selectedUri= $selectedUri, lastAudioPath: $lastAudioPath", Toast.LENGTH_LONG).show()
                     Log.e(TAG, "selectedUri= $selectedUri, lastAudioPath: $lastAudioPath")
                 }
                 isImage -> {
                     lastImagePath = ParseUriToRealPathUtil.getRealPathFromUri(requireContext(), selectedUri).toString()
-//                    Toast.makeText(requireActivity(), "selectedUri= $selectedUri, lastImagePath: $lastImagePath", Toast.LENGTH_LONG).show()
                     Log.e(TAG, "selectedUri= $selectedUri, lastImagePath: $lastImagePath")
                 }
                 isVideo -> {
                     lastVideoPath = ParseUriToRealPathUtil.getRealPathFromUri(requireContext(), selectedUri).toString()
-//                    Toast.makeText(requireActivity(), "selectedUri= $selectedUri, lastVideoPath: $lastVideoPath", Toast.LENGTH_LONG).show()
                     Log.e(TAG, "selectedUri= $selectedUri, lastVideoPath: $lastVideoPath")
                 }
             }
