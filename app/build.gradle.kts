@@ -124,7 +124,9 @@ dependencies {
     implementation("androidx.viewpager2:viewpager2:1.0.0")
 
     implementation("com.iceteck.silicompressorr:silicompressor:2.2.4")
-    implementation("com.googlecode.mp4parser:isoparser:1.1.22")
+    implementation("com.googlecode.mp4parser:isoparser:1.0.6") {
+        exclude(group = "org.aspectj", module = "aspectjrt")
+    }
     implementation("androidx.exifinterface:exifinterface:1.3.0")
 
 }
